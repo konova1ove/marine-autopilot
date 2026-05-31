@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marine Autopilot — Architecture Planner</title>
+<style>
+  :root {
+    --ocean: #0a1628;
+    --deep: #071020;
+    --wave: #0d2240;
+    --accent: #00c8ff;
+    --accent2: #00ff9d;
+    --danger: #ff4b6e;
+    --warn: #ffb347;
+    --muted: #4a6080;
+    --text: #cde4f8;
+    --card: #0f1e35;
+    --border: #1a3050;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--ocean);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    background: linear-gradient(135deg, var(--deep) 0%, var(--wave) 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 24px 40px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 4px 30px #000a;
+  }
+  .logo { font-size: 32px; }
+  header h1 { font-size: 22px; font-weight: 700; color: var(--accent); letter-spacing: 1px; }
+  header p { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .progress-bar {
+    margin-left: auto;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+  }
+  .progress-bar span { font-size: 12px; color: var(--muted); }
+  .bar-track {
+    width: 180px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 3px; transition: width .4s ease;
+  }
+
+  /* ── Layout ── */
+  main { display: flex; max-width: 1400px; margin: 0 auto; padding: 32px 24px; gap: 28px; }
+
+  /* ── Sidebar nav ── */
+  nav {
+    width: 220px; flex-shrink: 0;
+    position: sticky; top: 90px; align-self: flex-start;
+  }
+  .nav-label { font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; margin-bottom: 12px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border-radius: 8px; cursor: pointer;
+    font-size: 13px; color: var(--muted); transition: all .2s;
+    margin-bottom: 4px;
+  }
+  .nav-item:hover { background: var(--wave); color: var(--text); }
+  .nav-item.active { background: var(--wave); color: var(--accent); border-left: 2px solid var(--accent); }
+  .nav-item.done .nav-dot { background: var(--accent2); }
+  .nav-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex-shrink: 0;
+  }
+
+  /* ── Content area ── */
+  .content { flex: 1; min-width: 0; }
+
+  /* ── Section ── */
+  .section { display: none; animation: fadeIn .3s ease; }
+  .section.visible { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .section-header { margin-bottom: 24px; }
+  .section-tag {
+    display: inline-block; font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--accent); background: #00c8ff15; border: 1px solid #00c8ff30;
+    padding: 3px 10px; border-radius: 20px; margin-bottom: 10px;
+  }
+  .section-header h2 { font-size: 26px; font-weight: 700; margin-bottom: 8px; }
+  .section-header p { color: var(--muted); font-size: 14px; line-height: 1.6; }
+
+  /* ── Cards grid ── */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; cursor: pointer; transition: all .2s; position: relative; overflow: hidden;
+  }
+  .card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: var(--border); transition: background .2s;
+  }
+  .card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 30px #00c8ff18; }
+  .card:hover::before { background: var(--accent); }
+  .card.selected { border-color: var(--accent2); box-shadow: 0 0 0 2px #00ff9d30; }
+  .card.selected::before { background: var(--accent2); }
+  .card.rejected { opacity: .45; border-color: var(--border); }
+  .card.rejected::before { background: var(--danger); }
+
+  .card-icon { font-size: 28px; margin-bottom: 12px; }
+  .card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: #e8f4ff; }
+  .card p { font-size: 13px; color: var(--muted); line-height: 1.55; }
+  .card .badge {
+    display: inline-block; margin-top: 10px; font-size: 10px; padding: 2px 8px;
+    border-radius: 10px; font-weight: 600; letter-spacing: .5px;
+  }
+  .badge-recommended { background: #00ff9d20; color: var(--accent2); border: 1px solid #00ff9d40; }
+  .badge-alt { background: #00c8ff15; color: var(--accent); border: 1px solid #00c8ff30; }
+  .badge-complex { background: #ffb34720; color: var(--warn); border: 1px solid #ffb34740; }
+
+  .card .check-mark {
+    position: absolute; top: 14px; right: 14px; width: 24px; height: 24px;
+    border-radius: 50%; background: var(--accent2); display: flex; align-items: center;
+    justify-content: center; font-size: 13px; opacity: 0; transition: opacity .2s;
+  }
+  .card.selected .check-mark { opacity: 1; }
+
+  /* ── Diagram ── */
+  .diagram-box {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 28px; margin-bottom: 24px;
+  }
+  .diagram-box h3 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 20px; }
+
+  .pipeline {
+    display: flex; align-items: center; gap: 0; overflow-x: auto; padding-bottom: 4px;
+  }
+  .pipe-node {
+    flex-shrink: 0; background: var(--wave); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 18px; text-align: center; min-width: 120px;
+  }
+  .pipe-node .icon { font-size: 22px; margin-bottom: 6px; }
+  .pipe-node .label { font-size: 12px; font-weight: 600; color: var(--text); }
+  .pipe-node .sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .pipe-arrow {
+    flex-shrink: 0; color: var(--accent); font-size: 20px; padding: 0 8px;
+  }
+  .pipe-node.highlight { border-color: var(--accent); background: #00c8ff0d; }
+  .pipe-node.highlight .label { color: var(--accent); }
+
+  /* ── Decision panel ── */
+  .decision-panel {
+    background: linear-gradient(135deg, #0a1e38, #071830);
+    border: 1px solid var(--border); border-radius: 12px; padding: 24px;
+    margin-bottom: 24px;
+  }
+  .decision-panel h3 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .decision-panel p { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+  .decision-btns { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    padding: 10px 22px; border-radius: 8px; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 600; letter-spacing: .5px; transition: all .2s;
+  }
+  .btn-accept {
+    background: linear-gradient(135deg, #00c853, #00e676);
+    color: #001a0a;
+  }
+  .btn-accept:hover { transform: translateY(-1px); box-shadow: 0 4px 15px #00e67640; }
+  .btn-modify {
+    background: transparent; color: var(--warn);
+    border: 1px solid var(--warn);
+  }
+  .btn-modify:hover { background: #ffb34715; }
+  .btn-reject {
+    background: transparent; color: var(--danger);
+    border: 1px solid var(--danger);
+  }
+  .btn-reject:hover { background: #ff4b6e15; }
+  .btn-next {
+    background: linear-gradient(135deg, var(--accent), #0080cc);
+    color: #001a2e; margin-left: auto;
+  }
+  .btn-next:hover { transform: translateY(-1px); box-shadow: 0 4px 15px #00c8ff40; }
+  .btn-next:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  /* ── Choice result ── */
+  .choice-result {
+    display: none; align-items: center; gap: 10px;
+    background: #00ff9d10; border: 1px solid #00ff9d30;
+    border-radius: 8px; padding: 12px 16px; margin-top: 12px; font-size: 13px;
+  }
+  .choice-result.visible { display: flex; }
+  .choice-result.rejected-res { background: #ff4b6e10; border-color: #ff4b6e30; }
+
+  /* ── Code preview ── */
+  .code-preview {
+    background: #050e1a; border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; font-family: 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px; line-height: 1.7; color: #8eb8d8; overflow-x: auto;
+    margin: 12px 0;
+  }
+  .code-preview .kw { color: #79c0ff; }
+  .code-preview .fn { color: #d2a8ff; }
+  .code-preview .st { color: #a5d6ff; }
+  .code-preview .cm { color: #3d5a78; }
+  .code-preview .nu { color: #79c0ff; }
+
+  /* ── HUD mockup ── */
+  .hud-mockup {
+    background: #000d1a; border: 1px solid var(--border); border-radius: 12px;
+    padding: 0; overflow: hidden; position: relative; aspect-ratio: 16/9;
+    max-height: 380px;
+  }
+  .hud-video-bg {
+    position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 60%, #001428, #000508);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .hud-sea { width: 100%; height: 100%; position: relative; overflow: hidden; }
+
+  /* Horizon line */
+  .horizon {
+    position: absolute; top: 55%; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, #1a4060, #2a6090, #1a4060, transparent);
+  }
+  /* Safe corridor */
+  .safe-corridor {
+    position: absolute; top: 30%; left: 35%; right: 35%; bottom: 0;
+    border-left: 2px dashed rgba(0,255,157,.5);
+    border-right: 2px dashed rgba(0,255,157,.5);
+    background: rgba(0,255,157,.04);
+  }
+  .safe-corridor::before {
+    content: 'SAFE CORRIDOR';
+    position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    font-size: 8px; letter-spacing: 2px; color: var(--accent2); opacity: .7;
+    white-space: nowrap;
+  }
+  /* Bounding boxes */
+  .hud-box {
+    position: absolute; border: 2px solid; border-radius: 2px;
+    font-size: 8px; font-family: monospace; padding: 2px 4px;
+    white-space: nowrap;
+  }
+  .hud-box-label {
+    position: absolute; top: -18px; left: 0;
+    background: rgba(0,0,0,.7); padding: 1px 5px; border-radius: 2px;
+    font-size: 8px; font-family: monospace; white-space: nowrap;
+  }
+  .box-safe { border-color: var(--accent2); color: var(--accent2); }
+  .box-danger { border-color: var(--danger); color: var(--danger); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .6; } }
+
+  /* Telemetry overlay */
+  .hud-telem {
+    position: absolute; top: 10px; left: 10px;
+    background: rgba(0,12,28,.8); border: 1px solid #1a3050;
+    border-radius: 6px; padding: 8px 12px; font-family: monospace; font-size: 10px;
+    line-height: 1.9;
+  }
+  .telem-val { color: var(--accent); }
+
+  /* Alert */
+  .hud-alert {
+    position: absolute; top: 10px; right: 10px;
+    background: rgba(255,75,110,.15); border: 1px solid var(--danger);
+    border-radius: 6px; padding: 6px 12px; font-size: 10px; font-family: monospace;
+    color: var(--danger); animation: pulse 1s infinite;
+  }
+
+  /* Commands */
+  .hud-cmds {
+    position: absolute; bottom: 10px; right: 10px;
+    background: rgba(0,12,28,.8); border: 1px solid #1a3050;
+    border-radius: 6px; padding: 8px 12px; font-family: monospace; font-size: 10px;
+    line-height: 1.9;
+  }
+  .cmd-val { color: var(--warn); }
+
+  /* Crosshair */
+  .hud-cross {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    width: 30px; height: 30px;
+  }
+  .hud-cross::before, .hud-cross::after {
+    content: ''; position: absolute; background: rgba(0,200,255,.4);
+  }
+  .hud-cross::before { top: 50%; left: 0; right: 0; height: 1px; transform: translateY(-50%); }
+  .hud-cross::after { left: 50%; top: 0; bottom: 0; width: 1px; transform: translateX(-50%); }
+
+  /* ── Speed calc diagram ── */
+  .calc-diagram {
+    display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0;
+  }
+  .calc-box {
+    flex: 1; min-width: 160px; background: var(--wave); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px;
+  }
+  .calc-box h4 { font-size: 12px; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+  .calc-formula {
+    font-family: monospace; font-size: 13px; color: var(--accent); line-height: 1.8;
+  }
+
+  /* ── Summary ── */
+  .summary-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;
+  }
+  .summary-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px;
+    display: flex; gap: 12px; align-items: flex-start;
+  }
+  .summary-status {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .status-ok { background: #00ff9d20; }
+  .status-pending { background: #ffb34720; }
+  .summary-card h4 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .summary-card p { font-size: 12px; color: var(--muted); }
+
+  .generate-btn {
+    width: 100%; padding: 16px; border-radius: 10px; border: none; cursor: pointer;
+    background: linear-gradient(135deg, #00c853, #00bcd4);
+    color: #001a0a; font-size: 16px; font-weight: 700; letter-spacing: 1px;
+    transition: all .2s; margin-top: 20px;
+  }
+  .generate-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 30px #00c85340; }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 30px; right: 30px; z-index: 999;
+    background: var(--card); border: 1px solid var(--accent2);
+    border-radius: 10px; padding: 14px 20px;
+    font-size: 13px; color: var(--accent2);
+    transform: translateY(80px); opacity: 0; transition: all .3s;
+    box-shadow: 0 8px 30px #000a;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--deep); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .info-row {
+    display: flex; gap: 8px; align-items: flex-start;
+    background: #00c8ff0a; border: 1px solid #00c8ff20;
+    border-radius: 8px; padding: 12px 14px; font-size: 13px; margin: 12px 0;
+  }
+  .info-row .icon { flex-shrink: 0; }
+
+  .tag-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .tag {
+    font-size: 11px; padding: 3px 10px; border-radius: 12px;
+    background: var(--wave); border: 1px solid var(--border); color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚓</div>
+  <div>
+    <h1>MARINE AUTOPILOT — ARCHITECTURE PLANNER</h1>
+    <p>Interactive design review · Choose your implementation approach</p>
+  </div>
+  <div class="progress-bar">
+    <span id="progress-label">0 / 6 decisions made</span>
+    <div class="bar-track"><div class="bar-fill" id="bar-fill" style="width:0%"></div></div>
+  </div>
+</header>
+
+<main>
+  <!-- Sidebar nav -->
+  <nav>
+    <div class="nav-label">Sections</div>
+    <div class="nav-item active" onclick="goto(0)" id="nav0">
+      <div class="nav-dot" id="dot0"></div> Overview
+    </div>
+    <div class="nav-item" onclick="goto(1)" id="nav1">
+      <div class="nav-dot" id="dot1"></div> Vision Backend
+    </div>
+    <div class="nav-item" onclick="goto(2)" id="nav2">
+      <div class="nav-dot" id="dot2"></div> Speed Calc
+    </div>
+    <div class="nav-item" onclick="goto(3)" id="nav3">
+      <div class="nav-dot" id="dot3"></div> HUD / Overlay
+    </div>
+    <div class="nav-item" onclick="goto(4)" id="nav4">
+      <div class="nav-dot" id="dot4"></div> Decision Engine
+    </div>
+    <div class="nav-item" onclick="goto(5)" id="nav5">
+      <div class="nav-dot" id="dot5"></div> CAN-bus Layer
+    </div>
+    <div class="nav-item" onclick="goto(6)" id="nav6">
+      <div class="nav-dot" id="dot6"></div> Summary
+    </div>
+  </nav>
+
+  <div class="content">
+
+    <!-- ══ SECTION 0: OVERVIEW ══ -->
+    <div class="section visible" id="sec0">
+      <div class="section-header">
+        <div class="section-tag">Architecture Overview</div>
+        <h2>System Data Flow</h2>
+        <p>The complete pipeline — from raw camera frames to autopilot commands. Review each stage before we dive into decisions.</p>
+      </div>
+
+      <div class="diagram-box">
+        <h3>Full Pipeline</h3>
+        <div class="pipeline">
+          <div class="pipe-node">
+            <div class="icon">📷</div>
+            <div class="label">USB/Webcam</div>
+            <div class="sub">cv2.VideoCapture</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node highlight">
+            <div class="icon">🤖</div>
+            <div class="label">Roboflow</div>
+            <div class="sub">Workflow API</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node">
+            <div class="icon">📐</div>
+            <div class="label">Tracker</div>
+            <div class="sub">ID + bbox buffer</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node">
+            <div class="icon">⚡</div>
+            <div class="label">Speed Calc</div>
+            <div class="sub">px/s → knots</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node highlight">
+            <div class="icon">🧠</div>
+            <div class="label">Decision</div>
+            <div class="sub">Collision logic</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node">
+            <div class="icon">🖥️</div>
+            <div class="label">HUD Overlay</div>
+            <div class="sub">OpenCV draw</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node">
+            <div class="icon">🚢</div>
+            <div class="label">Commands</div>
+            <div class="sub">ENGINE / RUDDER</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="diagram-box">
+        <h3>Parallel Inputs</h3>
+        <div class="pipeline">
+          <div class="pipe-node">
+            <div class="icon">🛥️</div>
+            <div class="label">CAN-bus Mock</div>
+            <div class="sub">Heading, Speed, RPM</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node" style="border-color:var(--warn)">
+            <div class="icon">🔗</div>
+            <div class="label">Telemetry Bus</div>
+            <div class="sub">Shared state</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node highlight">
+            <div class="icon">🧠</div>
+            <div class="label">Decision Engine</div>
+            <div class="sub">+ Speed Calc</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-row">
+        <span class="icon">💡</span>
+        <span>6 design decisions across 5 modules. Each section presents options — pick the approach that fits your needs. Your choices shape the final generated spec.</span>
+      </div>
+
+      <div class="decision-panel">
+        <h3>Ready to review the architecture?</h3>
+        <p>We'll go through each module and you'll pick the implementation strategy.</p>
+        <div class="decision-btns">
+          <button class="btn btn-accept" onclick="goto(1)">Start Review →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ SECTION 1: VISION BACKEND ══ -->
+    <div class="section" id="sec1">
+      <div class="section-header">
+        <div class="section-tag">Module 1 · Vision</div>
+        <h2>Roboflow Inference Strategy</h2>
+        <p>How should we call your Roboflow Workflow (<code style="color:var(--accent)">boat-autopilot-assistant-1774813329814</code>) per frame?</p>
+      </div>
+
+      <div class="cards">
+        <div class="card" id="v1" onclick="selectCard('vision','v1')">
+          <div class="check-mark">✓</div>
+          <div class="card-icon">☁️</div>
+          <h3>Hosted API (HTTPS)</h3>
+          <p>Send each frame as base64/JPEG to <code>api.roboflow.com</code>. Zero local GPU required. Works on any machine. Latency ~200–400ms depending on connection.</p>
+          <div class="badge badge-recommended">Recommended</div>
+        </div>
+        <div class="card" id="v2" onclick="selectCard('vision','v2')">
+          <div class="check-mark">✓</div>
+          <div class="card-icon">💻</div>
+          <h3>Local Inference Server</h3>
+          <p>Run <code>roboflow/roboflow-inference</code> Docker image locally. Low latency (10–30ms), works offline. Requires Docker + GPU recommended.</p>
+          <div class="badge badge-alt">Offline-capable</div>
+        </div>
+        <div class="card" id="v3" onclick="selectCard('vision','v3')">
+          <div class="check-mark">✓</div>
+          <div class="card-icon">🐍</div>
+          <h3>inference SDK (pip)</h3>
+          <p>Use <code>pip install inference</code> + InferencePipeline for a clean callback-based loop. Auto-handles frame buffering and result queuing.</p>
+          <div class="badge badge-alt">Clean API</div>
+        </div>
+      </div>
+
+      <div class="code-preview" id="vision-code">
+<span class="cm"># Option will be shown after your selection</span>
+      </div>
+
+      <div class="decision-panel">
+        <h3>Decision 1 of 6: Inference Backend</h3>
+        <p>Select a card above, then accept or request changes.</p>
+        <div class="decision-btns">
+          <button class="btn btn-accept" onclick="acceptSection('vision',1)">✓ Accept Selection</button>
+          <button class="btn btn-modify" onclick="modifyNote('vision')">✎ Note a change</button>
+          <button class="btn btn-next" onclick="goto(2)" id="next1" disabled>Next →</button>
+        </div>
+        <div class="choice-result" id="result-vision"></div>
+      </div>
+    </div>
+
+    <!-- ══ SECTION 2: SPEED CALC ══ -->
+    <div class="section" id="sec2">
+      <div class="section-header">
+        <div class="section-tag">Module 2 · Speed Calculation</div>
+        <h2>Object Speed Estimation</h2>
+        <p>Tracked detections give us pixel positions over time. We need to convert that to real-world speed.</p>
+      </div>
+
+      <div class="calc-diagram">
+        <div class="calc-box">
+          <h4>Step 1 — Pixel Velocity</h4>
+          <div class="calc-formula">
+            Δpx = center(t) − center(t−n)<br>
+            dt = n × frame_interval<br>
+            v_px = Δpx / dt  <span style="color:var(--muted)">px/s</span>
+          </div>
+        </div>
+        <div class="calc-box">
+          <h4>Step 2 — Real-world</h4>
+          <div class="calc-formula">
+            v_rel = v_px × scale<br>
+            v_abs = v_rel + v_own<br>
+            <span style="color:var(--muted)">(from CAN-bus)</span>
+          </div>
+        </div>
+        <div class="calc-box">
+          <h4>Step 3 — Units</h4>
+          <div class="calc-formula">
+            m/s → knots × 1.944<br>
+            m/s → kph × 3.6<br>
+            <span style="color:var(--muted)">configurable</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="cards">
+        <div class="card" id="s1" onclick="selectCard('speed','s1')">
+          <div class="check-mark">✓</div>
+          <div class="card-icon">📏</div>
+          <h3>Fixed Scale Ratio</h3>
+          <p>User defines <code>meters_per_pixel</code> at a reference distance. Simple, fast, good enough for open-sea single-range scenarios.</p>
+          <div class="badge badge-recommended">Recommended (MVP)</div>
+        </div>
+        <div class="card" id="s2" onclick="selectCard('speed','s2')">
+          <div class="check-mark">✓</div>
+          <div class="card-icon">📐</div>
+          <h3>Perspective Transform</h3>
+          <p>4-point homography mapping pixel coords to real-world coords. Much more accurate when camera angle is known. Requires calibration step.</p>
+          <div class="badge badge-complex">Needs calibration</div>
+        </div>
+        <div class="card" id="s3" onclick="selectCard('speed','s3')">
+          <div class="check-mark">✓</div>
+          <div class="card-icon">📦</div>
+          <h3>Bounding Box Height Proxy</h3>
+          <p>Estimate distance from bbox height (larger = closer). Works without calibration — uses known average object size (e.g. 10m boat).</p>
+          <div class="badge badge-alt">No calibration</div>
+        </div>
+      </div>
+
+      <div class="info-row">
+        <span class="icon">🔢</span>
+        <span><b>Buffer depth:</b> We maintain a deque of the last <b>N=10</b> positions per tracker_id and compute velocity over the full window for stability. Configurable.</span>
+      </div>
+
+      <div class="decision-panel">
+        <h3>Decision 2 of 6: Speed Scale Method</h3>
+        <p>Select a card above, then accept.</p>
+        <div class="decision-btns">
+          <button class="btn btn-accept" onclick="acceptSection('speed',2)">✓ Accept Selection</button>
+          <button class="btn btn-modify" onclick="modifyNote('speed')">✎ Note a change</button>
+          <button class="btn btn-next" onclick="goto(3)" id="next2" disabled>Next →</button>
+        </div>
+        <div class="choice-result" id="result-speed"></div>
+      </div>
+    </div>
+
+    <!-- ══ SECTION 3: HUD ══ -->
+    <div class="section" id="sec3">
+      <div class="section-header">
+        <div class="section-tag">Module 3 · HUD Overlay</div>
+        <h2>OpenCV Visualization</h2>
+        <p>What the operator sees in real-time. Below is a mockup of the planned overlay.</p>
+      </div>
+
+      <div class="hud-mockup" style="margin-bottom:24px">
+        <div class="hud-video-bg">
+          <div class="hud-sea">
+            <!-- Sea gradient lines -->
+            <div style="position:absolute;top:50%;left:0;right:0;height:40%;background:linear-gradient(180deg,#001428,#002040)"></div>
+            <div style="position:absolute;top:0;left:0;right:0;height:50%;background:linear-gradient(180deg,#0a2040,#001830)"></div>
+
+            <div class="horizon"></div>
+            <div class="safe-corridor"></div>
+            <div class="hud-cross"></div>
+
+            <!-- Object 1 — safe -->
+            <div class="hud-box box-safe" style="left:15%;top:42%;width:80px;height:50px">
+              <div class="hud-box-label box-safe">BOAT #3 | 4.2 kn</div>
+            </div>
+
+            <!-- Object 2 — danger -->
+            <div class="hud-box box-danger" style="left:42%;top:38%;width:60px;height:40px">
+              <div class="hud-box-label box-danger">BOAT #7 | 8.1 kn ⚠</div>
+            </div>
+
+            <!-- Object 3 — safe -->
+            <div class="hud-box box-safe" style="left:70%;top:45%;width:45px;height:30px">
+              <div class="hud-box-label box-safe">BUOY #1 | 0.3 kn</div>
+            </div>
+
+            <!-- Telemetry -->
+            <div class="hud-telem">
+              HDG: <span class="telem-val">087°</span><br>
+              SPD: <span class="telem-val">6.5 kn</span><br>
+              RPM: <span class="telem-val">1840</span>
+            </div>
+
+            <!-- Alert -->
+            <div class="hud-alert">⚠ COLLISION RISK<br>BOAT #7</div>
+
+            <!-- Commands -->
+            <div class="hud-cmds">
+              ENGINE: <span class="cmd-val">SLOW DOWN</span><br>
+              RUDDER: <span class="cmd-val">STARBOARD</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cards">
+        <div class="card" id="h1" onclick="selectCard('hud','h1')">
+          <div class="check-mark">✓</div>
+          <div class="card-icon">🟩</div>
+          <h3>Simple Overlay</h3>
+          <p>Pure OpenCV: <code>cv2.rectangle</code>, <code>cv2.putText</code>, dashed lines drawn manually. Zero extra deps. Label: <code>[Class] #[ID] | Speed: Xkn</code></p>
+          <div class="badge badge-recommended">Recommended</div>
+        </div>
+        <div class="card" id="h2" onclick="selectCard('hud','h2')">
+          <div class="check-mark">✓</div>
+          <div class="card-icon">🎨</div>
+          <h3>Supervision Annotators</h3>
+          <p>Use <code>supervision</code> library (sv.BoxAnnotator, sv.LabelAnnotator, sv.TraceAnnotator). Cleaner code, built-in track traces, rounded boxes.</p>
+          <div class="badge badge-alt">Nicer visuals</div>
+        </div>
+      </div>
+
+      <div class="tag-row">
+        <div class="tag">Corridor: center 30% of frame width</div>
+        <div class="tag">Color: Green = safe, Red = risk</div>
+        <div class="tag">Font: cv2.FONT_HERSHEY_SIMPLEX</div>
+        <div class="tag">FPS counter top-right</div>
+      </div>
+
+      <div class="decision-panel">
+        <h3>Decision 3 of 6: HUD Rendering</h3>
+        <p>Select a rendering approach above.</p>
+        <div class="decision-btns">
+          <button class="btn btn-accept" onclick="acceptSection('hud',3)">✓ Accept Selection</button>
+          <button class="btn btn-modify" onclick="modifyNote('hud')">✎ Note a change</button>
+          <button class="btn btn-next" onclick="goto(4)" id="next3" disabled>Next →</button>
+        </div>
+        <div class="choice-result" id="result-hud"></div>
+      </div>
+    </div>
+
+    <!-- ══ SECTION 4: DECISION ENGINE ══ -->
+    <div class="section" id="sec4">
+      <div class="section-header">
+        <div class="section-tag">Module 4 · Decision Engine</div>
+        <h2>Collision Detection Logic</h2>
+        <p>How do we determine if a tracked object is on a collision course — and what commands to issue?</p>
+      </div>
+
+      <div class="diagram-box">
+        <h3>Corridor Intersection Logic</h3>
+        <div class="pipeline">
+          <div class="pipe-node">
+            <div class="icon">📍</div>
+            <div class="label">Object center</div>
+            <div class="sub">cx, cy</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node">
+            <div class="icon">➡️</div>
+            <div class="label">Velocity vector</div>
+            <div class="sub">vx, vy (px/s)</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node highlight">
+            <div class="icon">🎯</div>
+            <div class="label">Projected pos</div>
+            <div class="sub">t+N seconds</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node">
+            <div class="icon">🔲</div>
+            <div class="label">Corridor check</div>
+            <div class="sub">x_left &lt; px &lt; x_right</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node" style="border-color:var(--danger)">
+            <div class="icon">⚠️</div>
+            <div class="label">RISK flag</div>
+            <div class="sub">+ command gen</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cards">
+        <div class="card" id="d1" onclick="selectCard('decision','d1')">
+          <div class="check-mark">✓</div>
+          <div class="card-icon">📐</div>
+          <h3>Linear Projection (MVP)</h3>
+          <p>Project object position T seconds forward using current velocity. Check if projected point falls inside corridor bounds. Simple, robust, explainable.</p>
+          <div class="badge badge-recommended">Recommended</div>
+        </div>
+        <div class="card" id="d2" onclick="selectCard('decision','d2')">
+          <div class="check-mark">✓</div>
+          <div class="card-icon">📊</div>
+          <h3>CPA (Closest Point of Approach)</h3>
+          <p>Full nautical standard: compute time and distance of closest approach using relative velocity vectors. More accurate but requires accurate world-space velocities.</p>
+          <div class="badge badge-complex">Maritime standard</div>
+        </div>
+      </div>
+
+      <div class="diagram-box" style="margin-top:16px">
+        <h3>Command Generation Logic</h3>
+        <div class="calc-diagram">
+          <div class="calc-box">
+            <h4>ENGINE_ACTION</h4>
+            <div class="calc-formula">
+              if risk:<br>
+              &nbsp;&nbsp;"SLOW DOWN"<br>
+              else:<br>
+              &nbsp;&nbsp;"MAINTAIN"
+            </div>
+          </div>
+          <div class="calc-box">
+            <h4>RUDDER_ACTION</h4>
+            <div class="calc-formula">
+              if obj_cx &lt; frame_cx:<br>
+              &nbsp;&nbsp;"STARBOARD" (turn away)<br>
+              else:<br>
+              &nbsp;&nbsp;"PORT" (turn away)
+            </div>
+          </div>
+          <div class="calc-box">
+            <h4>Priority</h4>
+            <div class="calc-formula">
+              Closest threat<br>
+              wins when<br>
+              multiple risks
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="decision-panel">
+        <h3>Decision 4 of 6: Collision Algorithm</h3>
+        <p>Select an approach above.</p>
+        <div class="decision-btns">
+          <button class="btn btn-accept" onclick="acceptSection('decision',4)">✓ Accept Selection</button>
+          <button class="btn btn-modify" onclick="modifyNote('decision')">✎ Note a change</button>
+          <button class="btn btn-next" onclick="goto(5)" id="next4" disabled>Next →</button>
+        </div>
+        <div class="choice-result" id="result-decision"></div>
+      </div>
+    </div>
+
+    <!-- ══ SECTION 5: CAN-BUS ══ -->
+    <div class="section" id="sec5">
+      <div class="section-header">
+        <div class="section-tag">Module 5 · Telemetry</div>
+        <h2>CAN-bus Integration Layer</h2>
+        <p>A mock class now, swappable for real <code>python-can</code> later without changing any other module.</p>
+      </div>
+
+      <div class="code-preview">
+<span class="kw">class</span> <span class="fn">CANBusTelemetry</span>:
+    <span class="cm">"""Interface contract — mock or real implementation."""</span>
+    <span class="kw">def</span> <span class="fn">get_heading</span>(self) -> <span class="fn">float</span>: ...  <span class="cm"># degrees 0–360</span>
+    <span class="kw">def</span> <span class="fn">get_speed_knots</span>(self) -> <span class="fn">float</span>: ...  <span class="cm"># own-ship speed</span>
+    <span class="kw">def</span> <span class="fn">get_rpm</span>(self) -> <span class="fn">float</span>: ...          <span class="cm"># engine RPM</span>
+    <span class="kw">def</span> <span class="fn">get_all</span>(self) -> <span class="fn">dict</span>: ...           <span class="cm"># {heading, speed, rpm}</span>
+      </div>
+
+      <div class="cards">
+        <div class="card" id="c1" onclick="selectCard('can','c1')">
+          <div class="check-mark">✓</div>
+          <div class="card-icon">🎲</div>
+          <h3>Simulated (Random Walk)</h3>
+          <p>Values drift realistically using random walk. Heading drifts ±2°/s, speed ±0.1kn/s, RPM proportional to speed. Feels alive.</p>
+          <div class="badge badge-recommended">Recommended</div>
+        </div>
+        <div class="card" id="c2" onclick="selectCard('can','c2')">
+          <div class="check-mark">✓</div>
+          <div class="card-icon">📋</div>
+          <h3>Static Config Values</h3>
+          <p>Fixed values from a config dict or YAML. Simple, reproducible, good for testing the HUD and decision engine in isolation.</p>
+          <div class="badge badge-alt">Deterministic</div>
+        </div>
+        <div class="card" id="c3" onclick="selectCard('can','c3')">
+          <div class="check-mark">✓</div>
+          <div class="card-icon">🔌</div>
+          <h3>Thread + python-can stub</h3>
+          <p>Background thread structure already wired — mock reads from a queue, real implementation pushes CAN frames to same queue. Zero refactor needed.</p>
+          <div class="badge badge-complex">Future-proof</div>
+        </div>
+      </div>
+
+      <div class="info-row">
+        <span class="icon">🔧</span>
+        <span>The swap from mock to real <code>python-can</code> will be a single line: replace <code>MockCANBus()</code> with <code>RealCANBus(channel='can0')</code>.</span>
+      </div>
+
+      <div class="cards" style="margin-top:8px">
+        <div class="card" id="p1" onclick="selectCard('proj','p1')">
+          <div class="check-mark">✓</div>
+          <div class="card-icon">🗂️</div>
+          <h3>Flat File Structure</h3>
+          <p>Single <code>autopilot.py</code> with classes. Simple, runs immediately, no package overhead.</p>
+          <div class="badge badge-recommended">Recommended (MVP)</div>
+        </div>
+        <div class="card" id="p2" onclick="selectCard('proj','p2')">
+          <div class="check-mark">✓</div>
+          <div class="card-icon">📦</div>
+          <h3>Module Package</h3>
+          <p><code>autopilot/</code> package with <code>vision.py</code>, <code>telemetry.py</code>, <code>decision.py</code>, <code>hud.py</code>, <code>main.py</code>. Cleaner for growth.</p>
+          <div class="badge badge-alt">Scalable</div>
+        </div>
+      </div>
+
+      <div class="decision-panel">
+        <h3>Decisions 5 & 6: CAN-bus mock + Project structure</h3>
+        <p>Select one card from each group above.</p>
+        <div class="decision-btns">
+          <button class="btn btn-accept" onclick="acceptSection('can',5); acceptSection('proj',6)">✓ Accept Both</button>
+          <button class="btn btn-modify" onclick="modifyNote('can')">✎ Note a change</button>
+          <button class="btn btn-next" onclick="goto(6)" id="next5" disabled>View Summary →</button>
+        </div>
+        <div class="choice-result" id="result-can"></div>
+        <div class="choice-result" id="result-proj" style="margin-top:8px"></div>
+      </div>
+    </div>
+
+    <!-- ══ SECTION 6: SUMMARY ══ -->
+    <div class="section" id="sec6">
+      <div class="section-header">
+        <div class="section-tag">Final Summary</div>
+        <h2>Your Architecture Choices</h2>
+        <p>All decisions made. Review your configuration before we build.</p>
+      </div>
+
+      <div class="summary-grid" id="summary-grid">
+        <!-- filled by JS -->
+      </div>
+
+      <div class="diagram-box" style="margin-top:24px">
+        <h3>Dependencies to Install</h3>
+        <div class="code-preview" id="deps-preview">
+pip install inference opencv-python supervision numpy
+        </div>
+      </div>
+
+      <div class="diagram-box">
+        <h3>Estimated File Structure</h3>
+        <div class="code-preview" id="structure-preview">
+marine_autopilot/
+        </div>
+      </div>
+
+      <button class="generate-btn" onclick="generateSpec()">
+        ⚓ Lock In Choices — Ready to Implement
+      </button>
+    </div>
+
+  </div><!-- /content -->
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──
+const decisions = {};
+const notes = {};
+let decisionCount = 0;
+
+const cardLabels = {
+  v1: {name:'Hosted API (HTTPS)', key:'vision'},
+  v2: {name:'Local Inference Server', key:'vision'},
+  v3: {name:'inference SDK (pip)', key:'vision'},
+  s1: {name:'Fixed Scale Ratio', key:'speed'},
+  s2: {name:'Perspective Transform', key:'speed'},
+  s3: {name:'BBox Height Proxy', key:'speed'},
+  h1: {name:'Simple OpenCV Overlay', key:'hud'},
+  h2: {name:'Supervision Annotators', key:'hud'},
+  d1: {name:'Linear Projection', key:'decision'},
+  d2: {name:'CPA Algorithm', key:'decision'},
+  c1: {name:'Simulated Random Walk', key:'can'},
+  c2: {name:'Static Config Values', key:'can'},
+  c3: {name:'Thread + python-can stub', key:'can'},
+  p1: {name:'Flat File (autopilot.py)', key:'proj'},
+  p2: {name:'Module Package', key:'proj'},
+};
+
+const codePreviews = {
+  v1: `<span class="kw">import</span> requests, base64, cv2
+
+<span class="kw">def</span> <span class="fn">run_inference</span>(frame, api_key):
+    _, buf = cv2.imencode(<span class="st">'.jpg'</span>, frame)
+    b64 = base64.b64encode(buf).decode()
+    resp = requests.post(
+        <span class="st">"https://detect.roboflow.com/boat-autopilot-assistant-1774813329814/1"</span>,
+        params={<span class="st">"api_key"</span>: api_key},
+        json={<span class="st">"image"</span>: {<span class="st">"type"</span>: <span class="st">"base64"</span>, <span class="st">"value"</span>: b64}}
+    )
+    <span class="kw">return</span> resp.json()[<span class="st">"tracked_detections"</span>]`,
+  v2: `<span class="cm"># Start local server first:</span>
+<span class="cm"># docker run --gpus all -p 9001:9001 roboflow/roboflow-inference-server-gpu</span>
+<span class="kw">import</span> requests
+
+<span class="kw">def</span> <span class="fn">run_inference</span>(frame, api_key):
+    resp = requests.post(
+        <span class="st">"http://localhost:9001/boat-autopilot-assistant-1774813329814/1"</span>,
+        params={<span class="st">"api_key"</span>: api_key},
+        files={<span class="st">"file"</span>: (<span class="st">"frame.jpg"</span>, cv2.imencode(<span class="st">'.jpg'</span>, frame)[<span class="nu">1</span>].tobytes())}
+    )
+    <span class="kw">return</span> resp.json()[<span class="st">"tracked_detections"</span>]`,
+  v3: `<span class="kw">from</span> inference <span class="kw">import</span> InferencePipeline
+
+pipeline = InferencePipeline.init_with_workflow(
+    workspace_name=<span class="st">"my-workspace"</span>,
+    workflow_id=<span class="st">"boat-autopilot-assistant-1774813329814"</span>,
+    video_reference=<span class="nu">0</span>,  <span class="cm"># webcam index</span>
+    on_prediction=handle_predictions,
+    api_key=API_KEY,
+)
+pipeline.start()`,
+};
+
+function selectCard(group, id) {
+  // deselect others in group
+  Object.keys(cardLabels).forEach(k => {
+    if (cardLabels[k].key === group) {
+      const el = document.getElementById(k);
+      if (el) { el.classList.remove('selected'); el.classList.remove('rejected'); }
+    }
+  });
+  const el = document.getElementById(id);
+  if (el) el.classList.add('selected');
+  decisions[group] = id;
+
+  // Show code preview for vision
+  if (group === 'vision' && codePreviews[id]) {
+    document.getElementById('vision-code').innerHTML = codePreviews[id];
+  }
+}
+
+function acceptSection(group, decNum) {
+  if (!decisions[group]) {
+    showToast('Please select an option first!');
+    return;
+  }
+  const cardId = decisions[group];
+  const label = cardLabels[cardId].name;
+  const res = document.getElementById('result-' + group);
+  if (res) {
+    res.className = 'choice-result visible';
+    res.innerHTML = `<span style="color:var(--accent2);font-size:16px">✓</span> <b>${label}</b> accepted.`;
+  }
+
+  // Mark dot done
+  const nextBtn = document.getElementById('next' + (decNum > 5 ? 5 : decNum));
+  if (nextBtn) nextBtn.disabled = false;
+
+  // Count unique groups accepted
+  if (!decisions[group + '_accepted']) {
+    decisions[group + '_accepted'] = true;
+    decisionCount++;
+    updateProgress();
+  }
+
+  // Update nav dot
+  updateNavDots();
+  showToast('✓ Decision locked: ' + label);
+}
+
+function updateProgress() {
+  const total = 6;
+  const pct = Math.round((decisionCount / total) * 100);
+  document.getElementById('bar-fill').style.width = pct + '%';
+  document.getElementById('progress-label').textContent = decisionCount + ' / ' + total + ' decisions made';
+}
+
+function modifyNote(group) {
+  const note = prompt('Describe your modification or requirement:');
+  if (note) {
+    notes[group] = note;
+    showToast('📝 Note saved for ' + group);
+  }
+}
+
+function updateNavDots() {
+  const groupToSection = {vision:1, speed:2, hud:3, decision:4, can:5, proj:5};
+  Object.keys(groupToSection).forEach(g => {
+    if (decisions[g + '_accepted']) {
+      const dot = document.getElementById('dot' + groupToSection[g]);
+      if (dot) dot.style.background = 'var(--accent2)';
+    }
+  });
+}
+
+let currentSection = 0;
+function goto(n) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('visible'));
+  document.querySelectorAll('.nav-item').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec' + n).classList.add('visible');
+  document.getElementById('nav' + n).classList.add('active');
+  currentSection = n;
+  if (n === 6) buildSummary();
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function buildSummary() {
+  const items = [
+    {group:'vision', label:'Vision Backend', icon:'🤖'},
+    {group:'speed', label:'Speed Calculation', icon:'⚡'},
+    {group:'hud', label:'HUD Rendering', icon:'🖥️'},
+    {group:'decision', label:'Decision Engine', icon:'🧠'},
+    {group:'can', label:'CAN-bus Mock', icon:'🛥️'},
+    {group:'proj', label:'Project Structure', icon:'🗂️'},
+  ];
+  const grid = document.getElementById('summary-grid');
+  grid.innerHTML = items.map(it => {
+    const chosen = decisions[it.group];
+    const name = chosen ? cardLabels[chosen].name : 'Not decided';
+    const note = notes[it.group] ? ` <em style="color:var(--warn)">+ Note: ${notes[it.group]}</em>` : '';
+    const ok = decisions[it.group + '_accepted'];
+    return `<div class="summary-card">
+      <div class="summary-status ${ok?'status-ok':'status-pending'}">${ok?'✓':'…'}</div>
+      <div>
+        <h4>${it.icon} ${it.label}</h4>
+        <p>${name}${note}</p>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Deps
+  let deps = 'pip install opencv-python numpy';
+  if (decisions.vision === 'v1' || decisions.vision === 'v2') deps += ' requests';
+  if (decisions.vision === 'v3') deps += ' inference';
+  if (decisions.hud === 'h2') deps += ' supervision';
+  document.getElementById('deps-preview').textContent = deps;
+
+  // Structure
+  const pkg = decisions.proj === 'p2';
+  let struct = pkg
+    ? `marine_autopilot/\n├── autopilot/\n│   ├── __init__.py\n│   ├── vision.py\n│   ├── telemetry.py\n│   ├── decision.py\n│   ├── hud.py\n│   └── config.py\n├── main.py\n├── requirements.txt\n└── .env`
+    : `marine_autopilot/\n├── autopilot.py      # main script\n├── config.py         # settings\n├── requirements.txt\n└── .env`;
+  document.getElementById('structure-preview').textContent = struct;
+}
+
+function generateSpec() {
+  const missing = ['vision','speed','hud','decision','can','proj'].filter(g => !decisions[g+'_accepted']);
+  if (missing.length > 0) {
+    showToast('⚠ Please complete all decisions first (' + missing.join(', ') + ')');
+    return;
+  }
+  showToast('✅ Architecture locked! Ready to implement.');
+  setTimeout(() => {
+    document.querySelector('.generate-btn').textContent = '✅ Architecture Locked — Tell Claude to Start Coding!';
+    document.querySelector('.generate-btn').style.background = 'linear-gradient(135deg,#00ff9d,#00bcd4)';
+  }, 500);
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
