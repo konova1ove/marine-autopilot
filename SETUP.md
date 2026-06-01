@@ -25,12 +25,12 @@
 python3 --version
 
 # Установи зависимости
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 ```
 
 Если pip ругается на права — используй:
 ```bash
-pip install -r requirements.txt --user
+pip3 install -r requirements.txt --user
 ```
 
 Или через виртуальное окружение (рекомендуется):
@@ -38,7 +38,7 @@ pip install -r requirements.txt --user
 python3 -m venv venv
 source venv/bin/activate       # macOS / Linux
 # venv\Scripts\activate        # Windows
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 ```
 
 ---
@@ -78,7 +78,7 @@ cd /Users/polzovatel/Development/marine_autopilot
 # Если используешь venv — сначала активируй:
 source venv/bin/activate
 
-python autopilot.py
+python3 autopilot.py
 ```
 
 Откроется окно **"Marine Autopilot HUD"** с видеопотоком и оверлеем.
@@ -130,7 +130,7 @@ PERSP_DST = np.float32([
 
 1. Установи python-can:
    ```bash
-   pip install python-can
+   pip3 install python-can
    ```
    (раскомментируй строку в `requirements.txt`)
 
@@ -160,4 +160,4 @@ PERSP_DST = np.float32([
 | `[Roboflow] HTTP 401` | Неверный API Key | Проверь `.env`, пробелы/кавычки |
 | `[Roboflow] HTTP 404` | Неверный workspace | Проверь slug в URL Roboflow |
 | `[Roboflow] timeout` | Медленный интернет | Увеличь `timeout=5.0` в `RoboflowClient.infer()` |
-| `ModuleNotFoundError: cv2` | OpenCV не установлен | `pip install opencv-python` |
+| `ModuleNotFoundError: cv2` | OpenCV не установлен | `pip3 install opencv-python` |
